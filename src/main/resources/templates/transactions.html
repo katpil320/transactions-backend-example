@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Transactions</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 2rem auto;
+            max-width: 960px;
+            color: #1b1b1b;
+        }
+        h1 {
+            margin-bottom: 1.5rem;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid #d0d0d0;
+            text-align: left;
+        }
+        th {
+            background-color: #f5f5f5;
+            font-weight: 600;
+        }
+        tr.transaction:nth-child(even) {
+            background-color: #fafafa;
+        }
+        .amount {
+            text-align: right;
+            white-space: nowrap;
+        }
+        .highlight-income {
+            background-color: #e9f7ef;
+            font-weight: 600;
+        }
+        .empty-state {
+            font-style: italic;
+            color: #5c5c5c;
+        }
+    </style>
+</head>
+<body>
+<h1>Transactions</h1>
+{#if transactions.isEmpty}
+    <p class="empty-state">No transactions uploaded yet.</p>
+{#else}
+    <table>
+        <thead>
+        <tr>
+            <th>Date</th>
+            <th class="amount">Amount</th>
+            <th>Description</th>
+        </tr>
+        </thead>
+        <tbody>
+        {#for txn in transactions}
+        <tr class="transaction{#if txn.highlight} highlight-income{/if}" data-reference="{txn.reference}">
+            <td>{txn.formattedTimestamp}</td>
+            <td class="amount">{txn.formattedAmount}</td>
+            <td>{txn.description}</td>
+        </tr>
+        {/for}
+        </tbody>
+    </table>
+{/if}
+</body>
+</html>
