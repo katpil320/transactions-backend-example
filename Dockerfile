@@ -9,7 +9,7 @@ WORKDIR /code
 
 RUN ./mvnw -B org.apache.maven.plugins:maven-dependency-plugin:3.8.1:go-offline
 COPY src /code/src
-RUN ./mvnw package -Dnative
+RUN ./mvnw package -Dnative -DskipTests
 
 ## Stage 2: Final minimal image (UBI 9 minimal)
 FROM registry.access.redhat.com/ubi9/ubi-minimal

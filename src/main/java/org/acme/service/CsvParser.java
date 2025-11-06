@@ -1,185 +1,164 @@
 package org.acme.service;
 
-import java.io.BufferedReader;
+import org.apache.commons.csv.CSVFormat;
+import org.apache.commons.csv.CSVParser;
+import org.apache.commons.csv.CSVRecord;
+import org.acme.data.BankTransaction;
+import org.acme.exception.TransactionValidationException;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.Reader;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
-import org.acme.data.BankTransaction;
-import org.acme.data.TransactionRowParseResult;
-import org.acme.exception.TransactionValidationException;
-
 public final class CsvParser {
+
+    private static final String[] EXPECTED_HEADERS = {"reference", "timestamp", "amount", "currency", "description"};
 
     private CsvParser() {
     }
 
     public static List<BankTransaction> parse(InputStream csvStream) {
-        List<String> lines = readLines(csvStream);
-        validateNotEmpty(lines);
-        return parseAllLines(lines);
+        List<BankTransaction> transactions = new ArrayList<>();
+        List<String> errors = new ArrayList<>();
+
+        try (Reader reader = new InputStreamReader(csvStream, StandardCharsets.UTF_8);
+             CSVParser parser = new CSVParser(reader, 
+                CSVFormat.DEFAULT.builder()
+                    .setHeader()
+                    .setSkipHeaderRecord(true)
+                    .setTrim(true)
+                    .build())) {
+
+            validateHeaders(parser);
+
+            for (CSVRecord csvRecord : parser) {
+                processRecord(csvRecord, transactions, errors);
+            }
+
+            validateResults(transactions, errors);
+
+        } catch (IOException ex) {
+            throw TransactionValidationException.withMessage("Unable to read CSV payload: " + ex.getMessage());
+        }
+
+        return transactions;
     }
 
-    private static void validateNotEmpty(List<String> lines) {
-        if (lines.isEmpty()) {
+    private static void validateHeaders(CSVParser parser) {
+        if (parser.getHeaderMap().isEmpty()) {
             throw TransactionValidationException.withMessage("CSV payload is empty");
         }
-    }
 
-    private static List<BankTransaction> parseAllLines(List<String> lines) {
-        List<String> errors = new ArrayList<>();
-        List<BankTransaction> candidates = new ArrayList<>();
-
-        for (int i = 0; i < lines.size(); i++) {
-            processLine(lines.get(i), i, errors, candidates);
+        List<String> missingHeaders = new ArrayList<>();
+        for (String header : EXPECTED_HEADERS) {
+            if (!parser.getHeaderMap().containsKey(header)) {
+                missingHeaders.add(header);
+            }
         }
 
-        validateNoErrors(errors);
-        validateHasCandidates(candidates);
-
-        return candidates;
+        if (!missingHeaders.isEmpty()) {
+            throw TransactionValidationException.withMessage(
+                "Missing required CSV headers: " + String.join(", ", missingHeaders)
+            );
+        }
     }
 
-    private static void processLine(String line, int index, List<String> errors, List<BankTransaction> candidates) {
-        String trimmedLine = line.trim();
+    private static void processRecord(CSVRecord csvRecord, List<BankTransaction> transactions, List<String> errors) {
+        int lineNumber = (int) csvRecord.getRecordNumber() + 1;
+        List<String> recordErrors = new ArrayList<>();
 
-        if (shouldSkipLine(trimmedLine, index)) {
-            return;
+        String reference = validateReference(lineNumber, csvRecord.get("reference"), recordErrors);
+        Instant timestamp = validateTimestamp(lineNumber, csvRecord.get("timestamp"), recordErrors);
+        BigDecimal amount = validateAmount(lineNumber, csvRecord.get("amount"), recordErrors);
+        String currency = validateCurrency(lineNumber, csvRecord.get("currency"), recordErrors);
+        String description = csvRecord.get("description");
+
+        if (recordErrors.isEmpty()) {
+            transactions.add(buildTransaction(reference, timestamp, amount, currency, description));
+        } else {
+            errors.addAll(recordErrors);
+        }
+    }
+
+    private static String validateReference(int lineNumber, String value, List<String> errors) {
+        if (value == null || value.isEmpty()) {
+            errors.add(formatErrorMessage(lineNumber, "Missing reference"));
+            return null;
+        }
+        return value;
+    }
+
+    private static Instant validateTimestamp(int lineNumber, String value, List<String> errors) {
+        if (value == null || value.isEmpty()) {
+            errors.add(formatErrorMessage(lineNumber, "Missing timestamp"));
+            return null;
         }
 
-        int rowNumber = index + 1;
-        TransactionRowParseResult result = parseLine(rowNumber, trimmedLine);
-        errors.addAll(result.errors());
-        result.transaction().ifPresent(candidates::add);
+        try {
+            return Instant.parse(value);
+        } catch (Exception ex) {
+            errors.add(formatErrorMessage(lineNumber, "Invalid timestamp '%s'".formatted(value)));
+            return null;
+        }
     }
 
-    private static boolean shouldSkipLine(String line, int index) {
-        return line.isEmpty() || (index == 0 && isHeaderLine(line));
+    private static BigDecimal validateAmount(int lineNumber, String value, List<String> errors) {
+        if (value == null || value.isEmpty()) {
+            errors.add(formatErrorMessage(lineNumber, "Missing amount"));
+            return null;
+        }
+
+        try {
+            return new BigDecimal(value);
+        } catch (NumberFormatException ex) {
+            errors.add(formatErrorMessage(lineNumber, "Invalid amount '%s'".formatted(value)));
+            return null;
+        }
     }
 
-    private static boolean isHeaderLine(String line) {
-        String lower = line.toLowerCase();
-        return lower.contains("reference") && lower.contains("timestamp") && lower.contains("amount");
+    private static String validateCurrency(int lineNumber, String value, List<String> errors) {
+        if (value == null || value.isEmpty()) {
+            errors.add(formatErrorMessage(lineNumber, "Missing currency"));
+            return null;
+        }
+
+        String upperCurrency = value.toUpperCase();
+        if (upperCurrency.length() != 3) {
+            errors.add(formatErrorMessage(lineNumber, "Currency must be a 3-letter ISO code"));
+            return null;
+        }
+
+        return upperCurrency;
     }
 
-    private static void validateNoErrors(List<String> errors) {
+    private static BankTransaction buildTransaction(String reference, Instant timestamp, 
+                                                    BigDecimal amount, String currency, String description) {
+        BankTransaction transaction = new BankTransaction();
+        transaction.setReference(reference);
+        transaction.setTimestamp(timestamp);
+        transaction.setAmount(amount);
+        transaction.setCurrency(currency);
+        transaction.setDescription(description == null || description.isEmpty() ? null : description);
+        return transaction;
+    }
+
+    private static void validateResults(List<BankTransaction> transactions, List<String> errors) {
         if (!errors.isEmpty()) {
             throw new TransactionValidationException(errors);
         }
-    }
 
-    private static void validateHasCandidates(List<BankTransaction> candidates) {
-        if (candidates.isEmpty()) {
+        if (transactions.isEmpty()) {
             throw TransactionValidationException.withMessage("No valid transaction rows found in CSV");
         }
     }
 
-    private static List<String> readLines(InputStream csvStream) {
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(csvStream, StandardCharsets.UTF_8))) {
-            return reader.lines().toList();
-        } catch (IOException ex) {
-            throw new TransactionValidationException(List.of("Unable to read CSV payload: " + ex.getMessage()));
-        }
-    }
-
-    private static TransactionRowParseResult parseLine(int lineNumber, String line) {
-        List<String> errors = new ArrayList<>();
-        String[] columns = line.split(",", -1);
-
-        if (columns.length < 4) {
-            errors.add(formatErrorMessage(lineNumber, "Expected at least 4 columns but found %d".formatted(columns.length)));
-            return TransactionRowParseResult.withErrors(errors);
-        }
-
-        CsvRow row = new CsvRow(columns);
-        validateRequiredFields(lineNumber, row, errors);
-
-        if (!errors.isEmpty()) {
-            return TransactionRowParseResult.withErrors(errors);
-        }
-
-        return TransactionRowParseResult.success(buildTransaction(row));
-    }
-
-    private static void validateRequiredFields(int lineNumber, CsvRow row, List<String> errors) {
-        validateReference(lineNumber, row.reference(), errors);
-        validateTimestamp(lineNumber, row.timestampValue(), errors);
-        validateAmount(lineNumber, row.amountValue(), errors);
-        validateCurrency(lineNumber, row.currencyValue(), errors);
-    }
-
-    private static void validateReference(int lineNumber, String reference, List<String> errors) {
-        if (reference.isEmpty()) {
-            errors.add(formatErrorMessage(lineNumber, "Missing reference"));
-        }
-    }
-
-    private static void validateTimestamp(int lineNumber, String timestampValue, List<String> errors) {
-        if (timestampValue.isEmpty()) {
-            errors.add(formatErrorMessage(lineNumber, "Missing timestamp"));
-            return;
-        }
-
-        try {
-            Instant.parse(timestampValue);
-        } catch (Exception ex) {
-            errors.add(formatErrorMessage(lineNumber, "Invalid timestamp '%s'".formatted(timestampValue)));
-        }
-    }
-
-    private static void validateAmount(int lineNumber, String amountValue, List<String> errors) {
-        if (amountValue.isEmpty()) {
-            errors.add(formatErrorMessage(lineNumber, "Missing amount"));
-            return;
-        }
-
-        try {
-            new BigDecimal(amountValue);
-        } catch (NumberFormatException ex) {
-            errors.add(formatErrorMessage(lineNumber, "Invalid amount '%s'".formatted(amountValue)));
-        }
-    }
-
-    private static void validateCurrency(int lineNumber, String currencyValue, List<String> errors) {
-        if (currencyValue.isEmpty()) {
-            errors.add(formatErrorMessage(lineNumber, "Missing currency"));
-            return;
-        }
-
-        if (currencyValue.toUpperCase().length() != 3) {
-            errors.add(formatErrorMessage(lineNumber, "Currency must be a 3-letter ISO code"));
-        }
-    }
-
-    private static BankTransaction buildTransaction(CsvRow row) {
-        BankTransaction transaction = new BankTransaction();
-        transaction.setReference(row.reference());
-        transaction.setTimestamp(Instant.parse(row.timestampValue()));
-        transaction.setAmount(new BigDecimal(row.amountValue()));
-        transaction.setCurrency(row.currencyValue().toUpperCase());
-        transaction.setDescription(row.description().isEmpty() ? null : row.description());
-        return transaction;
-    }
-
     private static String formatErrorMessage(int lineNumber, String message) {
         return "Line %d: %s".formatted(lineNumber, message);
-    }
-
-    private record CsvRow(String reference, String timestampValue, String amountValue,
-                          String currencyValue, String description) {
-        CsvRow(String[] columns) {
-            this(
-                    columns[0].trim(),
-                    columns[1].trim(),
-                    columns[2].trim(),
-                    columns[3].trim(),
-                    columns.length >= 5 ? columns[4].trim() : ""
-            );
-        }
     }
 }
