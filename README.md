@@ -1,111 +1,90 @@
 # transactions-app
 
-Banking transactions management application with CSV import and web interface.
+A banking transactions management application built with Quarkus that allows CSV import and provides a web interface for viewing transactions.
 
-This project uses Quarkus, the Supersonic Subatomic Java Framework.
+## Features
 
-## Running with Docker Compose
+- **CSV Import**: Upload transactions in CSV format via REST API
+- **Web Interface**: View all transactions in a formatted HTML table with highlighting for the largest income transaction
+- **Data Validation**: Comprehensive validation for transaction fields (reference, timestamp, amount, currency)
+- **Duplicate Detection**: Prevents importing transactions with duplicate references
+- **PostgreSQL Storage**: Persistent storage
+
+## Quick Start
+
+### Running with Docker Compose
+
+Start the application with all dependencies:
 
 ```bash
 docker-compose up --build
 ```
 
-The application will be available at:
-- Transactions API: http://localhost:5000/transactions
-- Health checks: http://localhost:5000/q/health
+The application will be available at **http://localhost/transactions**
 
-### Upload CSV transactions:
+### API Usage
+
+**Upload transactions from CSV:**
 ```bash
-curl -X POST -H 'Content-Type: text/csv' --data-binary @transactions.csv http://localhost:5000/transactions
+curl -X POST -H 'Content-Type: text/csv' --data-binary @transactions.csv http://localhost/transactions
 ```
 
-### View transactions in browser:
-Open http://localhost:5000/transactions in your browser.
+**View transactions in browser:**
+```
+http://localhost:5000/transactions
+```
+
+### CSV Format
+
+The CSV file must include the following headers:
+```csv
+reference,timestamp,amount,currency,description
+TX001,2024-01-15T10:30:00Z,100.50,EUR,Payment for services
+TX002,2024-01-16T14:20:00Z,-50.25,USD,Refund
+```
+
+- **reference**: Unique transaction identifier (required)
+- **timestamp**: ISO 8601 format (required)
+- **amount**: Decimal number, negative for expenses (required)
+- **currency**: 3-letter ISO currency code (required)
+- **description**: Transaction description (optional)
 
 ## Architecture
 
-- **PostgreSQL**: Database for storing transactions on port 5432
-- **Quarkus App**: REST API with Qute templating, health on port 9000
-- **Nginx**: Reverse proxy exposing only `/transactions` and `/q/health` endpoints
-- **Port 5000**: External access through nginx
+The application uses a multi-container Docker setup:
 
-## Security
+- **PostgreSQL**: Database running on port 5432
+- **Quarkus App**: Backend application with REST API and Qute templating
+  - Main port: 8080 (internal)
+  - Management port: 9000 (for health checks)
+- **Nginx**: Reverse proxy exposing only `/transactions` and `/q/health` endpoints on port 80
 
-Only `/transactions` (GET/POST) and `/q/health` endpoints are exposed externally through nginx. All other endpoints (swagger, metrics, dev UI, etc.) are blocked for security.
+Security is enforced through Nginx, which blocks access to development endpoints (Swagger UI, metrics, dev console).
 
----
+## Development
 
-## Running the application in dev mode
+### Run in development mode (Automatically starts dependencies like database in background - using docker)
 
-You can run your application in dev mode that enables live coding using:
-
-```shell script
+```bash
 ./mvnw quarkus:dev
 ```
 
-> **_NOTE:_**  Quarkus now ships with a Dev UI, which is available in dev mode only at <http://localhost:8080/q/dev/>.
+Access the application at http://localhost:8080/transactions  
+Dev UI available at http://localhost:8080/q/dev/
 
-## Packaging and running the application
+### Run tests
 
-The application can be packaged using:
-
-```shell script
-./mvnw package
+```bash
+./mvnw test
 ```
 
-It produces the `quarkus-run.jar` file in the `target/quarkus-app/` directory.
-Be aware that it’s not an _über-jar_ as the dependencies are copied into the `target/quarkus-app/lib/` directory.
+## Technology Stack
 
-The application is now runnable using `java -jar target/quarkus-app/quarkus-run.jar`.
+- **Framework**: Quarkus 3.29.0
+- **Java**: 21
+- **Database**: PostgreSQL 16
+- **ORM**: Hibernate with Panache (Active Record pattern)
+- **Templating**: Qute
+- **CSV Parsing**: Apache Commons CSV
+- **Testing**: JUnit 5, REST Assured
 
-If you want to build an _über-jar_, execute the following command:
-
-```shell script
-./mvnw package -Dquarkus.package.jar.type=uber-jar
-```
-
-The application, packaged as an _über-jar_, is now runnable using `java -jar target/*-runner.jar`.
-
-## Creating a native executable
-
-You can create a native executable using:
-
-```shell script
-./mvnw package -Dnative
-```
-
-Or, if you don't have GraalVM installed, you can run the native executable build in a container using:
-
-```shell script
-./mvnw package -Dnative -Dquarkus.native.container-build=true
-```
-
-You can then execute your native executable with: `./target/transactions-app-1.0.0-SNAPSHOT-runner`
-
-If you want to learn more about building native executables, please consult <https://quarkus.io/guides/maven-tooling>.
-
-## Related Guides
-
-- REST ([guide](https://quarkus.io/guides/rest)): A Jakarta REST implementation utilizing build time processing and Vert.x. This extension is not compatible with the quarkus-resteasy extension, or any of the extensions that depend on it.
-- Qute ([guide](https://quarkus.io/guides/qute)): Offer templating support for web, email, etc in a build time, type-safe way
-- REST Jackson ([guide](https://quarkus.io/guides/rest#json-serialisation)): Jackson serialization support for Quarkus REST. This extension is not compatible with the quarkus-resteasy extension, or any of the extensions that depend on it
-- Hibernate ORM with Panache ([guide](https://quarkus.io/guides/hibernate-orm-panache)): Simplify your persistence code for Hibernate ORM via the active record or the repository pattern
-- JDBC Driver - PostgreSQL ([guide](https://quarkus.io/guides/datasource)): Connect to the PostgreSQL database via JDBC
-
-## Provided Code
-
-### Hibernate ORM
-
-Create your first JPA entity
-
-[Related guide section...](https://quarkus.io/guides/hibernate-orm)
-
-[Related Hibernate with Panache section...](https://quarkus.io/guides/hibernate-orm-panache)
-
-
-### REST
-
-Easily start your REST Web Services
-
-[Related guide section...](https://quarkus.io/guides/getting-started-reactive#reactive-jax-rs-resources)
-# transactions-backend-example
