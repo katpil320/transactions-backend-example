@@ -11,8 +11,6 @@ import java.util.Set;
 import org.acme.data.BankTransaction;
 import org.acme.exception.TransactionValidationException;
 
-import io.quarkus.logging.Log;
-
 @ApplicationScoped
 public class TransactionService {
 
