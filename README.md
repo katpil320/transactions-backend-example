@@ -57,7 +57,7 @@ The application uses a multi-container Docker setup:
 - **Quarkus App**: Backend application with REST API and Qute templating
   - Main port: 8080 (internal)
   - Management port: 9000 (for health checks)
-- **Nginx**: Reverse proxy exposing only `/transactions` and `/q/health` endpoints on port 80
+- **Nginx**: Reverse proxy exposing only `/transactions` endpoints on port 5000
 
 Security is enforced through Nginx, which blocks access to development endpoints (Swagger UI, metrics, dev console).
 
