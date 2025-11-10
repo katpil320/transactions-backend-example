@@ -46,14 +46,10 @@ public class TransactionResource {
     @Consumes("text/csv")
     public Response uploadTransactions(InputStream csvStream) {
         Log.info("Uploading transactions from CSV");
-        validatePayload(csvStream);
-        transactionService.importCsv(csvStream);
-        return Response.status(Response.Status.CREATED).build();
-    }
-
-    private void validatePayload(InputStream csvStream) {
         if (csvStream == null) {
             throw TransactionValidationException.withMessage("CSV payload is required");
         }
+        transactionService.importCsv(csvStream);
+        return Response.status(Response.Status.CREATED).build();
     }
 }
